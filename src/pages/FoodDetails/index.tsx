@@ -10,6 +10,7 @@ import { Image } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import Axios from 'axios';
 import formatValue from '../../utils/formatValue';
 
 import api from '../../services/api';
@@ -55,7 +56,9 @@ interface Food {
   name: string;
   description: string;
   price: number;
+  category: string;
   image_url: string;
+  thumbnail_url: string;
   formattedPrice: string;
   extras: Extra[];
 }
@@ -74,37 +77,139 @@ const FoodDetails: React.FC = () => {
   useEffect(() => {
     async function loadFood(): Promise<void> {
       // Load a specific food with extras based on routeParams id
+      try {
+        const { data } = await api.get(`/foods/${routeParams.id}`);
+
+        setFood({
+          ...data,
+          formattedPrice: formatValue(data.price),
+        });
+
+        setExtras(
+          data.extras.map((extra: Omit<Extra, 'quantity'>) => ({
+            ...extra,
+            quantity: 0,
+          })),
+        );
+      } catch (error) {
+        console.log(error);
+      }
     }
 
     loadFood();
   }, [routeParams]);
 
+  useEffect(() => {
+    async function loadIsFavorited(): Promise<void> {
+      try {
+        const { data } = await api.get('/favorites');
+        const favorited = data.find(
+          (favorite: Food) => favorite.id === food.id,
+        );
+        setIsFavorite(!!favorited);
+      } catch (error) {
+        console.log(error);
+      }
+    }
+
+    loadIsFavorited();
+  }, [food.id]);
+
   function handleIncrementExtra(id: number): void {
     // Increment extra quantity
+    setExtras(
+      extras.map(extra =>
+        extra.id === id ? { ...extra, quantity: extra.quantity + 1 } : extra,
+      ),
+    );
   }
 
   function handleDecrementExtra(id: number): void {
     // Decrement extra quantity
+    const findExtra = extras.find(extra => extra.id === id);
+
+    if (!findExtra) return;
+    if (findExtra.quantity === 0) return;
+
+    setExtras(
+      extras.map(extra =>
+        extra.id === id ? { ...extra, quantity: extra.quantity - 1 } : extra,
+      ),
+    );
   }
 
   function handleIncrementFood(): void {
     // Increment food quantity
+    setFoodQuantity(foodQuantity + 1);
   }
 
   function handleDecrementFood(): void {
     // Decrement food quantity
+    if (foodQuantity === 1) return;
+
+    setFoodQuantity(foodQuantity - 1);
   }
 
-  const toggleFavorite = useCallback(() => {
+  const toggleFavorite = useCallback(async () => {
     // Toggle if food is favorite or not
+    if (isFavorite) {
+      try {
+        await api.delete(`/favorites/${food.id}`);
+      } catch (error) {
+        console.log(error);
+      }
+    } else {
+      try {
+        await api.post('/favorites', {
+          id: food.id,
+          name: food.name,
+          description: food.description,
+          price: food.price,
+          category: food.category,
+          image_url: food.image_url,
+          thumbnail_url: food.thumbnail_url,
+        });
+      } catch (error) {
+        console.log(error);
+      }
+    }
+
+    setIsFavorite(!isFavorite);
   }, [isFavorite, food]);
 
   const cartTotal = useMemo(() => {
     // Calculate cartTotal
+    const extraTotal = extras.reduce((accumulator, extra) => {
+      return accumulator + extra.quantity * extra.value;
+    }, 0);
+
+    const foodTotal = food.price;
+
+    return formatValue(extraTotal + foodQuantity * foodTotal);
   }, [extras, food, foodQuantity]);
 
   async function handleFinishOrder(): Promise<void> {
     // Finish the order and save on the API
+    const requests = [];
+
+    for (let index = 0; index < foodQuantity; index++) {
+      const payload = {
+        ...food,
+        extras,
+      };
+
+      requests.push(payload);
+    }
+
+    try {
+      Promise.all(requests.map(request => api.post('/orders', request))).then(
+        () => {
+          navigation.goBack();
+        },
+      );
+    } catch (error) {
+      console.log(error);
+    }
   }
 
   // Calculate the correct icon name

@@ -33,6 +33,7 @@
     "prettier/prettier": "error",
     "no-use-before-define": "off",
     "no-underscore-dangle": "off",
+    "no-plusplus": "off",
     "react/jsx-one-expression-per-line": "off",
     "react/jsx-props-no-spreading": "off",
     "react/prop-types": "off",
